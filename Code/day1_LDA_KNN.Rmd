@@ -1,0 +1,141 @@
+---
+title: "SLHD-day1"
+author: "CB"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# The learning process for supervised learning
+
+In order to illustrate the evaluation of the performance of supervised classifiers, let's first consider some toy data: the Fisher's Iris
+
+```{r}
+data(iris)
+?iris
+```
+
+```{r}
+dim(iris)
+```
+
+```{r}
+colnames(iris)
+```
+
+```{r}
+X = iris[,-5]
+Y = iris[,5]
+```
+
+> Exercise: have a look at the documentation of LDA (`lda` function in the package `MASS`) to learn a LDA classifier on the iris data.
+
+```{r}
+library(MASS)
+?lda
+```
+
+```{r}
+f = lda(X,Y)
+f
+```
+
+
+
+Then, we can use this classifier to predict the class of a specific data point `x.star = c(6,2.8,5,1.6)`
+
+> Exercise: search in the documentation of lda how to use the learned classifier to predict the class of a new data point.
+
+```{r}
+x.star = c(6,2.8,5,1.6)
+predict(f,x.star)
+```
+
+> Exercise: evaluate the learning classification error (the error which is too optimistic, the one not to consider) on this data set.
+
+```{r}
+class = predict(f,X)$class
+err.learn = sum(class != Y) / length(Y)
+err.learn
+```
+
+> Exercise: apply the minimal setup to evaluate in a better manner the classifcation error (in validation) of LDA on this data set. As the data are sorted here by class, we first need to shuffle the data. 
+
+```{r}
+# Shuffling the data
+ord = sample(nrow(X),nrow(X))
+X = X[ord,]
+Y = Y[ord]
+
+# Computation of the validation error
+X.learn = X[1:100,]
+Y.learn = Y[1:100]
+X.val = X[101:150,]
+Y.val = Y[101:150]
+
+f = lda(X.learn,Y.learn)
+class =  predict(f,X.val)$class
+err.val = sum(class != Y.val) / length(Y.val)
+err.val
+```
+
+In order to have a better evaluation than the one of the minimal setup, we need to code a V-fold cross-validation:
+
+```{r}
+V = 15
+folds = rep(1:V,nrow(X)/V)
+
+err = rep(NA,V) 
+for (v in 1:V){
+  X.learn = X[folds!=v,]; Y.learn = Y[folds!=v]
+  X.val = X[folds==v,]; Y.val = Y[folds==v]
+  f = lda(X.learn,Y.learn)
+  class =  predict(f,X.val)$class
+  err[v] = sum(class != Y.val) / length(Y.val)
+}
+cat('LDA cv. error:',mean(err),'+/-',sd(err),'\n')
+```
+
+Let's now also consider the method k-NN, which is implemented in R in the `knn` function of the `class` package
+
+```{r}
+library(class)
+?knn
+```
+
+> Exercise: learn a k-NN classifier with k=3 on the iris data and make a prediction for the class of `x.star = c(6,2.8,5,1.6)`
+
+```{r}
+x.star = c(6,2.8,5,1.6)
+knn(X,x.star,Y,k = 3)
+```
+
+It is also interesting to see that changing the value of k actually changes the algorithm (and its prediction)
+
+```{r}
+knn(X,x.star,Y,k = 1)
+knn(X,x.star,Y,k = 5)
+```
+we don't have the information about the error of classification as we do with LDA. 
+
+
+This is a nice illustration that 1-NN and 5-NN are two different algorithms.
+
+# Exercise: apply the minimum setup to evaluate the validation error of k-NN with k = 3.
+```{r}
+
+class =  knn(X.learn,X.val,Y.learn,k = 3)
+err.val = sum(class != Y.val) / length(Y.val)
+err.val
+```
+
+
+
+
+
+
+
+

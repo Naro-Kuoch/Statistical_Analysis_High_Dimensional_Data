@@ -1,0 +1,423 @@
+---
+title: "SLHD-day3"
+author: "CB"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Support Vector Machines (2nd part)
+
+In order to better explore the capacities of the different kernels in SVM, let's consider now the 2-dimensional 3-class classification problem of the iris data:
+
+
+```{r}
+library(MASS)
+data(iris)
+X = iris[,1:2]
+Y = iris[,5]
+plot(X,col=c('lightblue','pink','palegreen')[Y],pch=19)
+```
+
+Let's now compare the classification boundaries of the linear, polynomial (degree 2) and RBF kernels:
+
+> Exercise: plot the classification boundaries of the linear kernel.
+
+```{r}
+library(e1071)
+# Creating the grid of points to classify
+xx = seq(min(X[,1])-0.1,max(X[,1])+0.1,length.out=200)
+yy = seq(min(X[,2])-0.1,max(X[,2])+0.1,length.out=200)
+Z = expand.grid(xx,yy)
+
+# Learn the classifier in a traditional manner
+# and classify all data points of the grid
+f = svm(X,Y,type = "C",kernel = "linear")
+class = predict(f,Z)
+
+# Plot the classification boundaries
+plot(Z,col=c('lightblue','pink','palegreen')[class],pch=19)
+points(X,col=c('darkblue','red','darkgreen')[Y],pch=19)
+```
+We can see that with linear kernel, we have linear descision boudary.
+> Exercise: modify this code to visualize the effect of varying the degree of the polynomial kernel on the classification boundaries.
+
+```{r}
+par(mfrow = c(2,3))
+
+for (d in 1:6){
+  f = svm(X,Y,type = "C",kernel = "poly",degree = d)
+  class = predict(f,Z)
+  
+  # Plot the classification boundaries
+  plot(Z,col=c('lightblue','pink','palegreen')[class],pch=19)
+  points(X,col=c('darkblue','red','darkgreen')[Y],pch=19)
+}
+```
+
+We can notice that odd degrees lead to less smooth classification boundaries and we may expect more validation error in these cases.
+
+> Exercise: use CV to compare the classification errors of the different degrees.
+
+```{r}
+svm.bestD <- function(X,Y,V=15,d.max=15){
+  folds = rep(1:V,nrow(X)/V)
+  err = matrix(NA,V,d.max) 
+  for (v in 1:V){
+    X.learn = X[folds!=v,]; Y.learn = Y[folds!=v]
+    X.val = X[folds==v,]; Y.val = Y[folds==v]
+    for (d in 1:d.max){
+      f = svm(X.learn,Y.learn,type="C",
+              kernel="poly",degree = d)
+      class = predict(f,X.val)
+      err[v,d] = sum(class != Y.val) / length(Y.val)
+    }
+  }
+  plot(colMeans(err),type='b')
+  return(which.min(colMeans(err))) # Return the best d
+}
+
+d.star = svm.bestD(X,Y)
+d.star
+```
+
+And now, let's consider the RBF kernel. First of all, let's have a look at the classification boundaries for different values of $\gamma$ (usually between $0.001$ and ... $10$).
+
+```{r}
+par(mfrow = c(2,3))
+
+gamma = c(0.01,0.1,1,2,5,10)
+for (g in gamma){
+  f = svm(X,Y,type = "C",kernel = "radial",gamma = g)
+  class = predict(f,Z)
+  
+  # Plot the classification boundaries
+  plot(Z,col=c('lightblue','pink','palegreen')[class],pch=19)
+  points(X,col=c('darkblue','red','darkgreen')[Y],pch=19)
+}
+```
+
+> Exercise: Adapt the code above to be able to select the most appropriate value of the tuning parameter $\gamma$ using CV.
+
+```{r}
+svm.bestGamma <- function(X,Y,V=15,
+        gamma = c(0.001,0.005,0.01,0.05,0.1,1,2,5,10,50,100)){
+  folds = rep(1:V,nrow(X)/V)
+  err = matrix(NA,V,length(gamma)) 
+  for (v in 1:V){
+    X.learn = X[folds!=v,]; Y.learn = Y[folds!=v]
+    X.val = X[folds==v,]; Y.val = Y[folds==v]
+    for (g in 1:length(gamma)){
+      f = svm(X.learn,Y.learn,type="C",
+              kernel="radial",gamma = gamma[g])
+      class = predict(f,X.val)
+      err[v,g] = sum(class != Y.val) / length(Y.val)
+    }
+  }
+  plot(gamma,colMeans(err),type='b',log = "x")
+  # Return the best gamma
+  return(gamma[which.min(colMeans(err))]) 
+}
+
+g.star = svm.bestGamma(X,Y)
+g.star
+```
+
+> Exercise: considering the original iris problem (3 classes, 4 dimensions), use a double CV procedure to compare the appropriate classification methods we studied.
+
+```{r}
+library(MASS)
+data(iris)
+X = iris[,-5]
+Y = iris[,5]
+```
+
+```{r}
+library(class)
+knn.bestK <- function(X,Y,V=15,K.max=30){
+  folds = rep(1:V,nrow(X)/V)
+  err.knn = matrix(NA,V,K.max) 
+  for (v in 1:V){
+    X.learn = X[folds!=v,]; Y.learn = Y[folds!=v]
+    X.val = X[folds==v,]; Y.val = Y[folds==v]
+    for (k in 1:K.max){
+      class = knn(X.learn,X.val,Y.learn,k=k)
+      err.knn[v,k] = sum(class != Y.val) / length(Y.val)
+    }
+  }
+  return(which.min(colMeans(err.knn))) # Return the best K
+}
+```
+
+
+```{r}
+V = 15
+folds = rep(1:V,nrow(X)/V)
+err.lda = err.qda = err.knn = rep(NA,V)
+err.lin = err.poly = err.rbf = rep(NA,V)
+K.star = d.star = g.star = rep(NA,V)
+for (v in 1:V){
+  X.learn = X[folds!=v,]; Y.learn = Y[folds!=v]
+  X.val = X[folds==v,]; Y.val = Y[folds==v]
+  # LDA
+  f = lda(X.learn,Y.learn)
+  class = predict(f,X.val)$class
+  err.lda[v] = sum(class != Y.val) / length(Y.val)
+  # QDA
+  f2 = qda(X.learn,Y.learn)
+  class2 = predict(f2,X.val)$class
+  err.qda[v] = sum(class2 != Y.val) / length(Y.val)
+  # KNN
+  K.star[v] = knn.bestK(X.learn,Y.learn)
+  class = knn(X.learn,X.val,Y.learn,k=K.star[v])
+  err.knn[v] = sum(class != Y.val) / length(Y.val)
+  # SVM Linear
+  svm.lin = svm(X.learn,Y.learn,type='C',kernel = "linear")
+  class = predict(svm.lin,X.val)
+  err.lin[v] = sum(class != Y.val) / length(Y.val)
+  # SVM poly
+  d.star[v] = svm.bestD(X,Y)
+  svm.poly = svm(X.learn,Y.learn,type='C',
+                 kernel = "poly",degree = d.star[v])
+  class = predict(svm.poly,X.val)
+  err.poly[v] = sum(class != Y.val) / length(Y.val)
+  # SVM RBF
+  g.star[v] = svm.bestGamma(X,Y)
+  svm.rbf = svm(X.learn,Y.learn,type='C',
+                 kernel = "radial",gamma = g.star[v])
+  class = predict(svm.rbf,X.val)
+  err.rbf[v] = sum(class != Y.val) / length(Y.val)
+}
+cat('LDA cv. error:',mean(err.lda),'+/-',sd(err.lda),'\n')
+cat('QDA cv. error:',mean(err.qda),'+/-',sd(err.qda),'\n')
+cat('KNN cv. error:',mean(err.knn),'+/-',sd(err.knn),'\n')
+cat('\t-> Best average K:',median(K.star),'\n')
+cat('SVM lin cv. error:',mean(err.lin),'+/-',sd(err.lin),'\n')
+cat('SVM poly cv. error:',mean(err.poly),'+/-',sd(err.poly),'\n')
+cat('\t-> Best average d:',median(d.star),'\n')
+cat('SVM RBF cv. error:',mean(err.rbf),'+/-',sd(err.rbf),'\n')
+cat('\t-> Best average g:',median(g.star),'\n')
+```
+
+# Unsupervised learning: dimension reduction
+
+## PCA
+
+In order to illustrate PCA, let's consider the `swiss` data that are available directly in R:
+
+```{r}
+data(swiss)
+?swiss
+```
+
+For doing a PCA on those data, we can do:
+
+```{r}
+X = swiss
+pc = princomp(X)
+pc
+```
+
+```{r}
+summary(pc)
+```
+
+This display allows you to apply the rule of the 90%: here, with $d=2$ we already have about 93% of the full variance.
+
+If we prefer to select $d$ using the elbow rule on the eigenvalue scree, we can use the following code:
+
+```{r}
+screeplot(pc)
+```
+
+Here, we will probably select $d=3$ components.
+
+For interpretation, we may rely on the correlation circle that can be obtain with the `biplot` function:
+
+```{r}
+biplot(pc)
+```
+In black are the projection of the data on the two first principle component. In red the correlation circle. We should split them in two plot to be more readable. 
+```{r}
+par(mfrow=c(1,2))
+biplot(pc,col=c(0,2)); box()
+biplot(pc,col=c(1,0))
+```
+from the red, we see that component 1 is mostly related to Catholic variable. 
+
+we can say that the village Oron is protestant that are higly involve in Agriculture.
+The village Geneve is almost a mix between catholic and protestant with very low level of aggriculture. 
+The Village Herens is higlty Catholic and aggriculture. 
+The village Rive GAuche is a mix between catholic and protestant but the level of aggriculture is less than the average. 
+
+> Exercise: Replicate this analysis with the Decathlon data. In particular, I want you to "predict" who won the competition? 
+
+```{r}
+deca = read.csv("https://husson.github.io/img/decathlon.csv",sep = ';')
+X = deca[,2:11]
+row.names(X) = deca[,1]
+```
+
+```{r}
+pc = princomp(X)
+pc
+```
+```{r}
+summary(pc)
+```
+
+```{r}
+screeplot(pc)
+```
+
+```{r}
+par(mfrow=c(1,2))
+biplot(pc,col=c(0,2)); box()
+biplot(pc,col=c(1,0))
+```
+The compoenent one is negative correlated with 1500m. the higer the value of component one, the lower value of 1500m. Meaning the athelte should arrive at minimum time. 
+
+The component two is nagative correlated with Javelot. Clay and Sebrle are good in Javelot. Kizoglou and Karpov they are not good at Jvelot. 
+Barras has large value for component one so he is not good with 1500m 
+## Sparce PCA
+
+SPCA allows to perform PCA and ease the interpretation of its results. The "official" implementation of SPCA is proposed in the `elasticnet` package for R:
+
+```{r}
+#install.packages("elasticnet")
+library(elasticnet)
+?spca
+```
+
+As we have seen in the course, the goal of SPCA is to sparsify the loading matrix $U$ of PCA:
+
+
+```{r}
+#the first 2 column of PCA transformation matrix U
+pc = princomp(X)
+d = 2
+U = unclass(pc$loadings)
+round(U[,1:d],3)
+```
+
+Let's now apply SPCA on this Decathlon data:
+
+```{r}
+lambda = 1
+out = spca(X,d,para = rep(lambda,d))
+round(out$loadings,3)
+```
+
+At this stage, it is interesting to compare the original PCA, its sparse version with SPCA and (the bad practice) the thresholded PCA.
+
+```{r}
+X = as.matrix(X)
+par(mfrow = c(1,3))
+U = unclass(pc$loadings[,1:d])
+plot(X %*% U, main="Original PCA",type="n")
+text(X %*% U,labels=rownames(X))
+
+U = out$loadings
+U[,2] = -U[,2]
+plot(X %*% U, main="Sparse PCA",type="n")
+text(X %*% U,labels=rownames(X))
+
+U = unclass(pc$loadings[,1:d])
+U[U<0.01] = 0
+plot(X %*% U, main="Thresholded PCA",type="n")
+text(X %*% U,labels=rownames(X))
+```
+We see that the geometric space of pca and spca are very similar and the threholding pca is toltally changing the space 
+
+> Exercise: play with the parameter lambda to see after which value the visualisation becomes very different.
+
+```{r}
+par(mfrow = c(2,4))
+for (lambda in c(0,0.01,0.1,1,2,5,10,100)){
+  U = spca(X,d,para = rep(lambda,d))$loadings
+  plot(X %*% U, main=paste("Sparse PCA",lambda),type="n")
+  text(X %*% U,labels=rownames(X))
+}
+```
+
+Looking at this visualization, we may conclude that $\lambda = 5$ is the right level of sparsity:
+
+```{r}
+U = spca(X,d,para = rep(5,d))$loadings
+U
+```
+## Probabilistic PCA (PPCA) and gsPPCA
+
+First, PPCA is implemented in the `Rdimtools` package:
+
+```{r}
+#install.packages("Rdimtools")
+library('Rdimtools')
+```
+
+> Exercsise: follow the documentation to compare visually PCA and PPCA on the Decathlon data.
+
+```{r}
+X = as.matrix(X)
+par(mfrow = c(1,2))
+
+d = 2
+pc = princomp(X)
+U = unclass(pc$loadings[,1:d])
+plot(X %*% U, main="Original PCA",type="n")
+text(X %*% U,labels=rownames(X))
+
+PPCA <- do.ppca(X, ndim=2)
+U = PPCA$proj
+U[,1] = -U[,1]
+plot(X %*% U, main="Probabilistic PCA",type="n")
+text(X %*% U,labels=rownames(X))
+```
+
+Finally, let's consider the Globally Sparse PPCA (Mattei et al. 2016):
+
+```{r}
+#install.packages("Bessel")
+library("Bessel")
+source('https://raw.githubusercontent.com/pamattei/GSPPCA/master/GSPPCA.R')
+```
+
+The last file provides an implementation of `gsppca`:
+
+```{r}
+out = gsppca(X,d=2)
+out$loadings
+```
+
+> Exercise: compare the results of PCA, SPCA ($\lambda=5$) and gsPPCA in term of visualization.
+
+
+```{r}
+X = as.matrix(X)
+par(mfrow = c(1,3))
+U = unclass(pc$loadings[,1:d])
+plot(X %*% U, main="Original PCA",type="n")
+text(X %*% U,labels=rownames(X))
+
+U = spca(X,d,para = rep(5,d))$loadings
+U = out$loadings
+U[,2] = -U[,2]
+plot(X %*% U, main="Sparse PCA",type="n")
+text(X %*% U,labels=rownames(X))
+
+U = out$loadings
+U[,2] = -U[,2]
+plot(X %*% U, main="gsPPCA",type="n")
+text(X %*% U,labels=rownames(X))
+```
+
+As we can see here, gsPPCA proposes directly the right level of sparsity without the intervention of the user. as the user don't need to choose parameter
+
+
+
+
+
+

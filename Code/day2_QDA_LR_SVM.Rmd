@@ -1,0 +1,613 @@
+---
+title: "R4BD-day2"
+author: "CB"
+date: "2025-06-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Supervised classification
+
+## Linear Discriminant Analysis
+
+To start, let's just learn a LDA classifier on the iris data.
+
+```{r}
+data(iris)
+X = iris[,-5] # the measurements on the flowers
+Y = iris[,5] # the species variable
+```
+
+The pair $(X,Y)$ is the set of learning data. Let's now use those data to learn a LDA classifier and use it to classify a certain new data point $x^*$:
+
+```{r}
+library(MASS)
+?lda
+```
+
+The documentation indicate that the call for learning a LDA classifier is the following in our situation:
+
+```{r}
+f = lda(X,Y)
+f
+```
+
+As we can see, the elements stored in the object `f` correspond to the estimations of the model parameters.
+
+Once the classifier has been learned, it is possible to use to classify a new data point `xstar = c(5.4,2.8,5,1.5)`.
+
+```{r}
+xstar = c(5.4,2.8,5,1.5)
+predict(f,xstar)
+```
+
+This data point $x^*$ is classified to the class virginica with a probability of 0.76.
+
+> Exercise: Apply the minimal setup to evaluate the performance of LDA for this task of classyfying flowers.
+
+```{r}
+# Because data are sorted by class, we need to shuffle the data first
+ord = sample(1:150,150)
+X = X[ord, ]; Y = Y[ord]
+
+# Split in learning and validation
+X.learn = X[1:100, ]; X.val = X[101:150, ] 
+Y.learn = Y[1:100]; Y.val = Y[101:150]
+
+# Learn the classifier on the learning part
+f = lda(X.learn,Y.learn)
+
+# Evaluate the error on the validation part
+out = predict(f,X.val)
+err = sum(out$class != Y.val) / length(Y.val)
+err
+```
+
+This is the classification error on the validation set using the minimal setup. This is a correct (but minimal) way of evaluating the performance of LDA on this task.
+
+A way to get a better estimation of the actual performance of LDA is to use V-fold Cross-Validation:
+
+```{r}
+V = 15
+fold = rep(1:V,nrow(X)/V)
+
+err = rep(NA,V)
+for (v in 1:V){
+  # Split the data according to the folds
+  X.learn = X[fold!=v,]; Y.learn = Y[fold!=v]
+  X.val = X[fold==v,]; Y.val = Y[fold==v]
+  
+  # Learn the classifier
+  f = lda(X.learn,Y.learn)
+  
+  # Evaluate the error on the validation part
+  out = predict(f,X.val)
+  err[v] = sum(out$class != Y.val) / length(Y.val)
+}
+
+cat('LDA:\t',mean(err),'±',sd(err))
+```
+
+> Remark: there exists another method inspired by LDA which is named QDA (quadratic discriminant analysis, for which the covariance matrix is specific to the class). The method is implemented in R within the `qda` function.
+
+> Exercise: compare the performance of LDA and QDA using CV on the iris data.
+
+```{r}
+V = 15
+fold = rep(1:V,nrow(X)/V)
+
+err1 = err2 = rep(NA,V)
+for (v in 1:V){
+  # Split the data according to the folds
+  X.learn = X[fold!=v,]; Y.learn = Y[fold!=v]
+  X.val = X[fold==v,]; Y.val = Y[fold==v]
+  
+  # Learn the classifier
+  f = lda(X.learn,Y.learn)
+  f2 = qda(X.learn,Y.learn)
+  
+  # Evaluate the error on the validation part
+  out = predict(f,X.val)
+  err1[v] = sum(out$class != Y.val) / length(Y.val)
+  out2 = predict(f2,X.val)
+  err2[v] = sum(out2$class != Y.val) / length(Y.val)
+}
+
+cat('LDA:\t',mean(err1),'±',sd(err1),'\n')
+cat('QDA:\t',mean(err2),'±',sd(err2),'\n')
+```
+
+This comparison allows to see that QDA is less efficient on average than LDA, and it is also less stable than LDA. LDA is therefore the best model here for this task.
+
+## K-nearest-neighbors (KNN)
+
+As we saw, KNN is a machine learning method. The method is implemented in R within the `knn` function of the `class` package.
+
+```{r}
+library(class)
+?knn
+```
+
+A basic call of `knn` on the whole iris data to classify the new data point `xstar = c(5.4,2.8,5,1.5)` is as follows (for a fixed value `K=3`):
+
+```{r}
+xstar = c(5.4,2.8,5,1.5)
+out = knn(X,xstar,Y,k = 3)
+out
+```
+
+> Exrecise: apply the minimal setup to calculate a first estimation of the performance of the `3-NN` algorithm.
+
+```{r}
+# Because data are sorted by class, we need to shuffle the data first
+ord = sample(1:150,150)
+X = X[ord, ]; Y = Y[ord]
+
+# Split in learning and validation
+X.learn = X[1:100, ]; X.val = X[101:150, ] 
+Y.learn = Y[1:100]; Y.val = Y[101:150]
+
+# Evaluate the error on the validation part
+out = knn(X.learn,X.val,Y.learn,k = 3)
+err = sum(out != Y.val) / length(Y.val)
+err
+```
+
+If we want to find the best value for k, we need to use CV:
+
+```{r}
+V = 15; K = 50
+fold = rep(1:V,nrow(X)/V)
+
+err = matrix(NA,V,K)
+for (v in 1:V){
+  for (k in 1:K){
+    # Split the data according to the folds
+    X.learn = X[fold!=v,]; Y.learn = Y[fold!=v]
+    X.val = X[fold==v,]; Y.val = Y[fold==v]
+    
+    # Evaluate the error on the validation part
+    out = knn(X.learn,X.val,Y.learn,k = k)
+    err[v,k] = sum(out != Y.val) / length(Y.val)
+  }
+}
+plot(1:K,colMeans(err),type='b',col='blue')
+```
+This code allows to select the best value of K for this data set. However, if we want to evaluate the performance of KNN in general (meaning for all possible value of K), we actually need to perform a double-CV.
+
+For that, we can implement a small function `KNN.bestK()` that will perform this internal CV for selecting K.
+
+```{r}
+KNN.bestK <- function(X,Y,V=15,K=50){
+  fold = rep(1:V,nrow(X)/V)
+  err = matrix(NA,V,K)
+  for (v in 1:V){
+    for (k in 1:K){
+      # Split the data according to the folds
+      X.learn = X[fold!=v,]; Y.learn = Y[fold!=v]
+      X.val = X[fold==v,]; Y.val = Y[fold==v]
+      
+      # Evaluate the error on the validation part
+      out = knn(X.learn,X.val,Y.learn,k = k)
+      err[v,k] = sum(out != Y.val) / length(Y.val)
+    }
+  }
+  k.best = which.min(colMeans(err))
+  return(k.best)
+}
+
+KNN.bestK(X,Y)
+```
+
+And now, we can use this function within a "traditional" code for CV, in particular for comparing with LDA and QDA.
+
+```{r}
+data(iris)
+X = iris[,-5]; Y = iris[,5]
+
+V = 15
+fold = rep(1:V,nrow(X)/V)
+
+err1 = err2 = err3 = rep(NA,V)
+for (v in 1:V){
+  # Split the data according to the folds
+  X.learn = X[fold!=v,]; Y.learn = Y[fold!=v]
+  X.val = X[fold==v,]; Y.val = Y[fold==v]
+  
+  # LDA
+  f = lda(X.learn,Y.learn)
+  err1[v] = sum(predict(f,X.val)$class != Y.val) / length(Y.val)
+  
+  # QDA
+  f2 = qda(X.learn,Y.learn)
+  err2[v] = sum(predict(f2,X.val)$class != Y.val) / length(Y.val)
+  
+  # KNN
+  bestK = KNN.bestK(X.learn,Y.learn)
+  out.knn = knn(X.learn,X.val,Y.learn,k = bestK)
+  err3[v] = sum(out.knn != Y.val) / length(Y.val)
+}
+
+cat('LDA:\t',mean(err1),'±',sd(err1),'\n')
+cat('QDA:\t',mean(err2),'±',sd(err2),'\n')
+cat('KNN:\t',mean(err3),'±',sd(err3),'\n')
+```
+
+> Exercise: modify the code above to also display the "best K on average".
+
+```{r}
+V = 15
+fold = rep(1:V,nrow(X)/V)
+
+err1 = err2 = err3 = bestK = rep(NA,V)
+for (v in 1:V){
+  # Split the data according to the folds
+  X.learn = X[fold!=v,]; Y.learn = Y[fold!=v]
+  X.val = X[fold==v,]; Y.val = Y[fold==v]
+  
+  # LDA
+  f = lda(X.learn,Y.learn)
+  err1[v] = sum(predict(f,X.val)$class != Y.val) / length(Y.val)
+  
+  # QDA
+  f2 = qda(X.learn,Y.learn)
+  err2[v] = sum(predict(f2,X.val)$class != Y.val) / length(Y.val)
+  
+  # KNN
+  bestK[v] = KNN.bestK(X.learn,Y.learn)
+  out.knn = knn(X.learn,X.val,Y.learn,k = bestK[v])
+  err3[v] = sum(out.knn != Y.val) / length(Y.val)
+}
+
+cat('LDA:\t',mean(err1),'±',sd(err1),'\n')
+cat('QDA:\t',mean(err2),'±',sd(err2),'\n')
+cat('KNN:\t',mean(err3),'±',sd(err3),'(best K:',median(bestK),')\n')
+```
+
+In order to compare the methods in term of classification boudaries, it may be nice to visualize in 2d these boundaries:
+
+```{r}
+data(iris)
+X = iris[,1:2]; Y = iris[,5]
+
+# Learn the classifier
+f = lda(X,Y)
+
+# Classify all data points of the space
+xx = seq(min(X[,1])-0.5,max(X[,1])+0.5,length.out = 200)
+yy = seq(min(X[,2])-0.5,max(X[,2])+0.5,length.out = 200)
+Z = expand.grid(xx,yy)
+
+out = predict(f,Z)
+
+plot(Z,col=as.numeric(out$class)+1)
+points(X,col="grey",pch=19)
+```
+
+> Exercise: compare the classification boudaries for LDA, QDA and KNN (with K=11)
+
+
+```{r}
+data(iris)
+X = iris[,1:2]; Y = iris[,5]
+par(mfrow=c(1,3))
+
+# Classify all data points of the space
+xx = seq(min(X[,1])-0.5,max(X[,1])+0.5,length.out = 200)
+yy = seq(min(X[,2])-0.5,max(X[,2])+0.5,length.out = 200)
+Z = expand.grid(xx,yy)
+
+# LDA
+f = lda(X,Y); out = predict(f,Z)
+plot(Z,col=as.numeric(out$class)+1,main="LDA")
+points(X,col="grey",pch=19)
+
+# QDA
+f = qda(X,Y); out = predict(f,Z)
+plot(Z,col=as.numeric(out$class)+1,main="QDA")
+points(X,col="grey",pch=19)
+
+# KNN (with K=11)
+out = knn(X,Z,Y,k=11)
+plot(Z,col=as.numeric(out)+1,main="KNN")
+points(X,col="grey",pch=19)
+```
+
+If we now focus on KNN and study the effect of the choice of K on the classification boundaries, we get:
+
+
+```{r}
+data(iris)
+X = iris[,1:2]; Y = iris[,5]
+
+# Classify all data points of the space
+xx = seq(min(X[,1])-0.5,max(X[,1])+0.5,length.out = 200)
+yy = seq(min(X[,2])-0.5,max(X[,2])+0.5,length.out = 200)
+Z = expand.grid(xx,yy)
+
+# KNN
+for (k in 1:10){
+  out = knn(X,Z,Y,k=k)
+  plot(Z,col=as.numeric(out)+1,main="KNN")
+  points(X,col="grey",pch=19) 
+}
+```
+
+## Logistic regression
+
+Logistic regression (LR) is provided in R through the `glm` function of the `stats` package. A basic call to the function is as follows (for two classes only!):
+
+```{r}
+data(iris)
+X = iris[51:150,-5]; Y = iris[51:150,5]
+
+plot(X,col=Y,pch=19)
+```
+In this context, we learn a LR classifier:
+
+```{r}
+data = data.frame(X=X,Y=as.factor(Y))
+f = glm(Y ~ .,data = data, family = "binomial")
+```
+
+```{r}
+f
+```
+
+If you would like to classify some data:
+
+```{r}
+xstar = c(5.4,2.8,5,1.5)
+xstar = data.frame(t(xstar))
+colnames(xstar) = paste("X.",colnames(X),sep='')
+
+out = predict(f,xstar,type='response')
+out
+```
+
+Here, the output is the probability to be in class 1. If this probabilty is higher than 0.5, we classify the data point to class 1.
+
+Of course, it is interesting to use CV to compare the performance of LR with LDA for instance.
+
+> Exercise: write the CV code to make this comparison.
+
+```{r}
+data(iris)
+X = iris[51:150,-5]; Y = iris[51:150,5]
+V = 15; fold = rep(1:V,nrow(X)/V)
+data = data.frame(X=X,Y=Y)
+
+err1 = err2 = rep(NA,V)
+for (v in 1:V){
+  # Split the data according to the folds
+  X.learn = X[fold!=v,]; Y.learn = Y[fold!=v]
+  X.val = X[fold==v,]; Y.val = Y[fold==v]
+  
+  # LDA
+  f = lda(X.learn,Y.learn)
+  out = predict(f,X.val)
+  err1[v] = sum(out$class != Y.val) / length(Y.val)
+  
+  # LR
+  f = glm(Y ~ .,data = data, subset = which(fold!=v),family = "binomial")
+  out2 = predict(f2,data[fold==v,1:4],type='response')
+  err2[v] = sum(out2$class != Y.val) / length(Y.val)
+}
+
+cat('LDA:\t',mean(err1),'±',sd(err1),'\n')
+cat('LR:\t',mean(err2),'±',sd(err2),'\n')
+```
+
+> (Homework) Exercise: compare LR, LDA, QDA and KNN on this binary classification problem.
+
+## Support vector machines (SVM)
+
+To experiment SVM, let's come back on the original iris classification problem (with 3 classes):
+
+```{r}
+data(iris)
+X = iris[,-5]
+Y = iris[,5]
+```
+
+SVM is implemented in R within the `e1071` package:
+
+```{r}
+#install.libraries("e1071")
+library(e1071)
+?svm
+```
+
+The use of SVM is quite classical:
+
+```{r}
+f = svm(X,Y) # Default kernel is RBF with gamma = 1/p
+xstar = c(5.4,2.8,5,1.5)
+out = predict(f,t(xstar))
+out
+```
+
+Before to go futher, let's study the effect of the kernel choice and its tuning parameter:
+
+
+```{r}
+data(iris)
+X = iris[,1:2]; Y = iris[,5]
+
+# Classify all data points of the space
+xx = seq(min(X[,1])-0.5,max(X[,1])+0.5,length.out = 200)
+yy = seq(min(X[,2])-0.5,max(X[,2])+0.5,length.out = 200)
+Z = expand.grid(xx,yy)
+
+# SVM
+f = svm(X,Y,kernel = 'radial',gamma = 1e1)
+out = predict(f,Z)
+plot(Z,col=as.numeric(out)+1,main="SVM")
+points(X,col="grey",pch=19)
+```
+
+In order to select the best $\gamma$, we can use CV:
+
+```{r}
+V = 15; K = 50
+fold = rep(1:V,nrow(X)/V)
+gammas = c(1e-3,5e-3,1e-2,5e-2,0.1,0.5,1,2,5,10,100)
+err = matrix(NA,V,length(gammas))
+for (v in 1:V){
+  for (i in 1:length(gammas)){
+    # Split the data according to the folds
+    X.learn = X[fold!=v,]; Y.learn = Y[fold!=v]
+    X.val = X[fold==v,]; Y.val = Y[fold==v]
+    
+    # Evaluate the error on the validation part
+    f = svm(X.learn,Y.learn,kernel='radial',gamma=gammas[i])
+    out = predict(f,X.val)
+    err[v,i] = sum(out != Y.val) / length(Y.val)
+  }
+}
+plot(gammas,colMeans(err),type='b',col='blue',log = 'x')
+```
+
+```{r}
+svm.bestgamma <- function(X,Y,V=15){
+  fold = rep(1:V,nrow(X)/V)
+  gammas = c(1e-3,5e-3,1e-2,5e-2,0.1,0.5,1,2,5,10,100)
+  err = matrix(NA,V,length(gammas))
+  for (v in 1:V){
+    for (i in 1:length(gammas)){
+      # Split the data according to the folds
+      X.learn = X[fold!=v,]; Y.learn = Y[fold!=v]
+      X.val = X[fold==v,]; Y.val = Y[fold==v]
+      
+      # Evaluate the error on the validation part
+      f = svm(X.learn,Y.learn,kernel='radial',gamma=gammas[i])
+      out = predict(f,X.val)
+      err[v,i] = sum(out != Y.val) / length(Y.val)
+    }
+  }
+  best.gamma = gammas[which.min(colMeans(err))]
+  return(best.gamma)
+}
+
+svm.bestgamma(X,Y)
+```
+
+And, thanks to this function, we can now compare SVM with LDA, QDA and KNN in a general (double-CV) comparison.
+
+> Exercise: modify the code of this morning to add SVM (RBF) and SVM (linear) in the comparison.
+
+```{r}
+data(iris)
+X = iris[,-5]; Y = iris[,5]
+V = 15; fold = rep(1:V,nrow(X)/V)
+
+err1 = err2 = err3 = err4 = err5 = bestK = bestG = rep(NA,V)
+for (v in 1:V){
+  # Split the data according to the folds
+  X.learn = X[fold!=v,]; Y.learn = Y[fold!=v]
+  X.val = X[fold==v,]; Y.val = Y[fold==v]
+  
+  # LDA
+  f = lda(X.learn,Y.learn)
+  err1[v] = sum(predict(f,X.val)$class != Y.val) / length(Y.val)
+  
+  # QDA
+  f2 = qda(X.learn,Y.learn)
+  err2[v] = sum(predict(f2,X.val)$class != Y.val) / length(Y.val)
+  
+  # KNN
+  bestK[v] = KNN.bestK(X.learn,Y.learn)
+  out.knn = knn(X.learn,X.val,Y.learn,k = bestK[v])
+  err3[v] = sum(out.knn != Y.val) / length(Y.val)
+  
+  # SVM (RBF)
+  bestG[v] = svm.bestgamma(X.learn,Y.learn)
+  f4 = svm(X.learn,Y.learn,kernel='radial',gamma=bestG[v])
+  out.rbf = predict(f4,X.val)
+  err4[v] = sum(out.rbf != Y.val) / length(Y.val)
+  
+  # SVM (linear)
+  f5 = svm(X.learn,Y.learn,kernel='linear')
+  out.lin = predict(f5,X.val)
+  err5[v] = sum(out.lin != Y.val) / length(Y.val)
+}
+
+cat('LDA:\t\t',mean(err1),'±',sd(err1),'\n')
+cat('QDA:\t\t',mean(err2),'±',sd(err2),'\n')
+cat('KNN:\t\t',mean(err3),'±',sd(err3),'(best K:',median(bestK),')\n')
+cat('SVM RBF:\t',mean(err4),'±',sd(err4),'(best G:',median(bestG),')\n')
+cat('SVM Lin:\t',mean(err5),'±',sd(err5),'\n')
+```
+
+On different data, the relative performances of these methods may be different. Let's for instance consider the `wine` data from the `HDclassif` package.
+
+```{r}
+#install.packages("HDclassif")
+library(HDclassif)
+data(wine)
+X = wine[,2:14]
+Y = as.factor(wine[,1])
+```
+
+```{r}
+V = 15; fold = rep(1:V,nrow(X)/V)
+
+err1 = err2 = err3 = err4 = err5 = bestK = bestG = rep(NA,V)
+for (v in 1:V){
+  # Split the data according to the folds
+  X.learn = X[fold!=v,]; Y.learn = Y[fold!=v]
+  X.val = X[fold==v,]; Y.val = Y[fold==v]
+  
+  # LDA
+  f = lda(X.learn,Y.learn)
+  err1[v] = sum(predict(f,X.val)$class != Y.val) / length(Y.val)
+  
+  # QDA
+  f2 = qda(X.learn,Y.learn)
+  err2[v] = sum(predict(f2,X.val)$class != Y.val) / length(Y.val)
+  
+  # KNN
+  bestK[v] = KNN.bestK(X.learn,Y.learn)
+  out.knn = knn(X.learn,X.val,Y.learn,k = bestK[v])
+  err3[v] = sum(out.knn != Y.val) / length(Y.val)
+  
+  # SVM (RBF)
+  bestG[v] = svm.bestgamma(X.learn,Y.learn)
+  f4 = svm(X.learn,Y.learn,kernel='radial',gamma=bestG[v])
+  out.rbf = predict(f4,X.val)
+  err4[v] = sum(out.rbf != Y.val) / length(Y.val)
+  
+  # SVM (linear)
+  f5 = svm(X.learn,Y.learn,kernel='linear')
+  out.lin = predict(f5,X.val)
+  err5[v] = sum(out.lin != Y.val) / length(Y.val)
+}
+
+cat('LDA:\t\t',mean(err1),'±',sd(err1),'\n')
+cat('QDA:\t\t',mean(err2),'±',sd(err2),'\n')
+cat('KNN:\t\t',mean(err3),'±',sd(err3),'(best K:',median(bestK),')\n')
+cat('SVM RBF:\t',mean(err4),'±',sd(err4),'(best G:',median(bestG),')\n')
+cat('SVM Lin:\t',mean(err5),'±',sd(err5),'\n')
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

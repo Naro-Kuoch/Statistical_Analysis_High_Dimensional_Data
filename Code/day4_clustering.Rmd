@@ -1,0 +1,516 @@
+---
+title: "SLHD-day4"
+author: "CB"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Clustering
+
+## Clustering with k-means
+
+Let's consider once a gain the swiss data:
+
+```{r}
+data(swiss)
+dim(swiss)
+```
+
+The k-means algorithm is implemented in the `kmeans` function:
+
+```{r}
+?kmeans
+```
+
+> Exercise: cluster the swiss data with kmeans and $K=3$, and visualize the result using a pair plot.
+
+```{r}
+out = kmeans(swiss, centers = 3)
+out$cluster
+```
+
+
+
+```{r}
+out$centers
+```
+
+```{r}
+pairs(swiss,col = out$cluster, pch = 19)
+```
+
+> Remark: since k-means is sensitive to the initialization, it is always better to ask k-means
+to do 10 initalizations and select afterward the best one. 
+
+```{r}
+out = kmeans(swiss, centers = 3, nstart = 10)
+pairs(swiss,col = out$cluster, pch = 19)
+```
+
+As we saw in the course, the quality of this clustering may be evaluated using the crierion: $$J(K) = \frac{B(K)}{S}$$
+
+and which is computed by the `kmeans` function:
+
+```{r}
+J = out$betweenss / out$totss
+J
+```
+
+> Exercise: In order to select the best value of K according to this criterion, write a small piece of code to test different values of K and plot the evolution of J(K) according to K.
+
+```{r}
+K.max = 15
+J = rep(NA,K.max)
+for (k in 1:K.max){
+  out = kmeans(swiss, centers = k, nstart = 10)
+  J[k] = out$betweenss / out$totss
+}
+plot(1:K.max,J,type='b',col='blue')
+lines(1:K.max,J,type='s',lty=3,col='gray')
+abline(v = 4,lty=2,col='lightgreen')
+```
+
+```{r}
+out = kmeans(swiss, centers = 4, nstart = 10)
+pairs(swiss,col = out$cluster, pch = 19)
+```
+
+```{r}
+out$centers
+```
+## Clustering with HC
+
+Hierarchical clustering (HC) is implemented in the `hclust` function in R:
+
+```{r}
+?hclust
+```
+
+Following the documentation of the function, we should provide a distance matrix to the function in place of the data:
+
+```{r}
+hc = hclust(dist(swiss),method = "single")
+```
+
+and the dendrogram associated with this call can be seen using the `plot` function:
+
+```{r}
+plot(hc)
+```
+
+> Exercise: test and compare the different distances between the groups (single, complete, centroid and ward.D2)
+
+```{r}
+par(mfrow = c(2,2))
+plot(hclust(dist(swiss),method = "single"))
+plot(hclust(dist(swiss),method = "complete"))
+plot(hclust(dist(swiss),method = "centroid"))
+plot(hclust(dist(swiss),method = "ward.D2"))
+```
+
+Looking at the different dendrograms, the solution of the method single should not be considered since the tree is unbalenced. For the different solutions, the method of the highest jump to select the number of cluster provides:
+
+- for single, k=4
+- for complete, k=3
+- for centroid, k=3
+- and for Ward, k=2
+
+Those clusterings may be visualized thanks to the `cutree` and `rect.hclust` functions:
+
+```{r}
+par(mfrow = c(2,2))
+hc <- hclust(dist(swiss),method = "single")
+plot(hc); rect.hclust(hc,k = 4)
+hc <- hclust(dist(swiss),method = "complete")
+plot(hc); rect.hclust(hc,k = 3)
+hc <- hclust(dist(swiss),method = "centroid")
+plot(hc); rect.hclust(hc,k = 3)
+hc <- hclust(dist(swiss),method = "ward.D2")
+plot(hc); rect.hclust(hc,k = 2)
+```
+
+In order to compare the results with k-means, let's project the different clusterings in the observation space.
+
+In particular, this is the solution with 3 groups obtained with the complete distance:
+
+```{r}
+hc <- hclust(dist(swiss),method = "complete")
+clust = cutree(hc,k = 3)
+
+pairs(swiss,col = clust, pch = 19)
+```
+
+Another interesting solution is the one of the single distance as it is able to seperate one observation in a cluster (but the dendrogram has a form that tends to prevent the use of this solution):
+
+```{r}
+hc <- hclust(dist(swiss),method = "single")
+clust = cutree(hc,k = 4)
+
+pairs(swiss,col = clust, pch = 19)
+```
+
+
+The Ward solution is however too simple to describe this data set:
+
+```{r}
+hc <- hclust(dist(swiss),method = "ward.D2")
+clust = cutree(hc,k = 2)
+
+pairs(swiss,col = clust, pch = 19)
+```
+
+
+## The Gaussian mixture model and the EM algorithm
+
+First of all, we need to install the library `mclust` that is implementing the EM algorithm for the GMM:
+
+```{r}
+#install.packages("mclust")
+library(mclust)
+```
+
+Within `mclust`, we can cluster the data using the central function `Mclust`:
+
+```{r}
+?Mclust
+```
+
+> Exercise: cluster the swiss data with Mclucst into 3 groups and visualize the results with pairs.
+
+```{r}
+out = Mclust(swiss,G = 3)
+```
+
+The object `out` contains:
+
+- all estimated mixture parameters
+
+```{r}
+out$parameters$pro
+```
+
+```{r}
+out$parameters$mean
+```
+- the posterior probabilities to belong to the clusters
+
+```{r}
+out$z
+```
+- and the final clustering 
+
+```{r}
+out$classification
+```
+- an additional information is provided: the log-likelihood and the BIC value
+
+```{r}
+out$loglik
+```
+
+```{r}
+out$bic
+```
+
+In fact, and it is invisible art first, Mclust tested 14 submodels of the full GMM (the model VVV hereafter) and returned the one with the highest BIC value. It is possible to visualise these values:
+
+```{r}
+plot(out,what="BIC")
+```
+
+Here, Mclust tested different configurations between VVV and EII (which reduces to k-means).
+
+> Exercise: run the EM algorithm for the VVV model with 3 and 4 groups and use BIC to select the most appropriate model for the data.
+
+```{r}
+out.3 = Mclust(swiss,G = 3, modelNames = 'VVV')
+```
+
+```{r}
+out.4 = Mclust(swiss,G = 4, modelNames = 'VVV')
+```
+
+```{r}
+out.3$bic
+```
+```{r}
+out.4$bic
+```
+According to BIC, the solution with 3 groups is better (highest BIC value). 
+
+Given this result, it could be interesting to also test other values:
+
+```{r}
+out = Mclust(swiss,G = 1:10, modelNames = 'VVV')
+plot(out,what="BIC")
+```
+
+With Mclust, it also possible to test at the same time all models and this for a range of numbers of clusters:
+
+```{r}
+out = Mclust(swiss,G = 1:10,modelNames = c('VVI','EEE','VEV','VVV'))
+plot(out,what="BIC")
+```
+
+According to this, the best model is 'EEE' with 3 groups:
+
+```{r}
+pairs(swiss,col = out$class, pch = 19)
+```
+
+The Mclust package is also coming with some visualization tools:
+
+```{r}
+plot(out,what = "class")
+```
+```{r}
+plot(out,what = "density")
+```
+```{r}
+plot(out,what = "uncertainty")
+```
+
+# Toward the analysis of high-dimensional data
+
+## Combining dimension reduction and clustering: which way?
+
+In practice, we often have the two problems of massive data (too much rows and columns) at the same time and the question is: should we first (A) reduce the dimensionality and cluster afterward or (B) cluster in the HD space and reduce the dimensionality after?
+
+In general, the solution B is better since the clustering is done with all information available and we then just project the data for visualization. But, the option A is sometimes the unique solution, for instance if you have clearly not enough data in regard to the number of variables.
+
+Let's anyway compare the two solutions for kmeans and mclust:
+
+```{r}
+X = swiss
+```
+
+
+```{r}
+par(mfrow=c(1,2))
+# Option A: perform PCA, then project the data on the new PCA system, take the first 2 principle components 
+X.2d = predict(princomp(X))[,1:2]
+#cluster the projected data 
+out.A = kmeans(X.2d,centers = 3,nstart = 10)
+plot(X.2d,col=out.A$cluster,pch=19)
+
+# Option B: cluster the original data
+out.B = kmeans(X,centers = 3,nstart = 10)
+#visualize on the PCA system 
+plot(X.2d,col=out.B$cluster,pch=19)
+```
+we see that the result are not the same but we can't say which one is better 
+> Exercise: replicate this comparison with K=4.
+
+```{r}
+par(mfrow=c(1,2))
+# Option A
+X.2d = predict(princomp(X))[,1:2]
+out.A = kmeans(X.2d,centers = 4,nstart = 10)
+plot(X.2d,col=out.A$cluster,pch=19)
+
+# Option B
+out.B = kmeans(X,centers = 4,nstart = 10)
+plot(X.2d,col=out.B$cluster,pch=19)
+```
+
+> Exercise: replicate this comparison with Mclust (EEE with 3 groups)
+
+```{r}
+par(mfrow=c(1,2))
+# Option A
+X.2d = predict(princomp(X))[,1:2]
+out.A = Mclust(X.2d,G = 3,modelNames = "EEE")
+plot(X.2d,col=out.A$class,pch=19)
+
+# Option B
+out.B = Mclust(X,G = 3,modelNames = "EEE")
+plot(X.2d,col=out.B$class,pch=19)
+```
+
+As we see, the two options lead to different solutions for both kmeans and Mclust, without any clear winner. In fact, the best solution will be to use techniques prepared for real high-dimensional data.
+
+In order to just test on real high-dimensional data, let's consider the USPS358 data from the MCBbook package:
+
+```{r}
+#install.packages("MBCbook")
+library(MBCbook)
+# dataset of flatten images handwirtten digit 3, 5, and 8
+# each images is 16*16 
+#so each row associate to an image with 16*16 columns 
+data(usps358)
+
+?usps358
+```
+
+
+```{r}
+X = usps358[,-1]
+cls =  usps358$cls
+dim(X)
+```
+Here, the data are 16x16 images of handwritten digits that are vectorized. It is therefore possible to reconstruct the images if we want:
+
+```{r}
+image(matrix(as.double(X[123,]),nrow = 16))
+```
+
+> Exercise: cluster the data with k-means into 3 groups and visualize the cluster means as above.
+
+
+```{r}
+out.km = kmeans(X,centers = 3,nstart = 10)
+table(cls,out.km$cluster)
+```
+Here the known classes are mostly correctly recognized by kmeans, even though we have about 14% of misclassified samples.
+
+
+It is also possible to visualize the cluster means:
+
+```{r}
+plotIm <- function(x,...){
+  image(t(
+          matrix(t(x),
+                 ncol=16,
+                 byrow=TRUE)[16:1,]
+          ),
+          col=gray(255:0/255),
+          axes=FALSE,...)
+  box()
+}
+
+#The mean of the 3 cluster 
+par(mfrow=c(1,3))
+for (k in 1:3) plotIm(out.km$centers[k,])
+```
+
+In fact, for clustering, we have a specific measure for comparing two partitions: the Adjusted Rand Index (ARI). If the ARI is close to 0, the two partitions are different, if ARI=1, the partitions are perfectly the same.
+
+```{r}
+adjustedRandIndex(cls,out.km$cluster)
+```
+> Exercise: replicate this analysis with Mclust, still with K=3 and the model EEE.
+
+```{r}
+out.gmm = Mclust(X,G = 3,modelNames = c("EII", "VII", "EEI", "EVI", "VEI", "VVI"),
+                 initialization=list(subset = sample(nrow(X),300)))
+table(cls,out.gmm$class)
+adjustedRandIndex(cls,out.gmm$class)
+```
+```{r}
+par(mfrow=c(1,3))
+for (k in 1:3) plotIm(out.gmm$parameters$mean[,k])
+```
+
+At this point, we understand that clustering high-dimensional data is complicated and we may try here the two solutions A and B, in order to see if they improve the ARI.
+
+> Exercise: adapt the solutions A and B to this data and evaluate the impact on the ARI
+
+```{r}
+d = 3
+par(mfrow=c(1,2))
+# Option A
+X.proj = predict(princomp(X))[,1:d]
+out.A = Mclust(X.proj,G = 3,modelNames = c("EII", "VII", "EEI", "EVI", "VEI", "VVI"),
+                 initialization=list(subset = sample(nrow(X),300)))
+#plot(X.proj,col=out.A$class,pch=19)
+table(cls,out.A$class)
+adjustedRandIndex(cls,out.A$class)
+
+
+```
+
+```{r}
+# Option B
+out.B = Mclust(X,G = 3,modelNames = c("EII", "VII", "EEI", "EVI", "VEI", "VVI"),
+                 initialization=list(subset = sample(nrow(X),300)))
+#plot(X.proj,col=out.B$class,pch=19)
+table(cls,out.B$class)
+adjustedRandIndex(cls,out.B$class)
+```
+
+Here, we can conclude that option A reduces significantly the computing time but also slightly reduces the performance. **We therefore need other techniques!**
+
+## Subspace clustering techniques
+
+Here, we consider subspace clustering techniques such as MPPCA and HDDC. Those techniques are implemented in the `HDclassif` package:
+
+```{r}
+#install.packages('HDclassif')
+library(HDclassif)
+```
+
+Here is a basic call of the main function `hddc`:
+
+```{r}
+out.hd = hddc(X,K = 3,model = "AkBkQkDk",threshold = 0.01)
+table(cls,out.hd$class)
+adjustedRandIndex(cls,out.hd$class)
+```
+As any Gaussian mixture model, we can look at the different estimated parameters:
+
+```{r}
+out.hd$d
+```
+Here we see that cluster one has 38 dimesion, cluster 2 has 40 which is the most complicated to cluster and cluster 3 has 37 dimension which is the simplest one 
+```{r}
+par(mfrow=c(1,3))
+for (k in 1:3) plotIm(out.hd$mu[k,])
+```
+
+It also possible to vary the models or the threshold to obtain better results:
+
+```{r}
+out.hd = hddc(X,K = 3,model = "AkBkQkDk",threshold = 0.001)
+out.hd$d
+table(cls,out.hd$class)
+adjustedRandIndex(cls,out.hd$class)
+```
+Here is a model with a common noise variance:
+```{r}
+out.hd = hddc(X,K = 3,model = "AkjBQkDk",threshold = 0.01)
+out.hd$d
+table(cls,out.hd$class)
+adjustedRandIndex(cls,out.hd$class)
+```
+And this is exactly MPPCA:
+```{r}
+out.hd = hddc(X,K = 3,model = "AkjBkQkD",threshold = 0.1)
+out.hd$d
+table(cls,out.hd$class)
+adjustedRandIndex(cls,out.hd$class)
+```
+
+And of course, we can rely on model selection to select the best model and the best threshold:
+
+```{r}
+out.hd = hddc(X,K = 3,model = c(1:5,7),threshold = 0.1)
+out.hd$d
+table(cls,out.hd$class)
+adjustedRandIndex(cls,out.hd$class)
+```
+
+Another question in general is how many clusters? Here again, we can ask BIC to select K:
+
+
+```{r}
+out.hd = hddc(X,K = 1:6,model = c(1:5,7),threshold = 0.1,mc.cores = 8)
+out.hd$d
+table(cls,out.hd$class)
+adjustedRandIndex(cls,out.hd$class)
+```
+```{r}
+out.hd = hddc(X,K = 10,model = 1,threshold = 0.1)
+out.hd$d
+table(cls,out.hd$class)
+adjustedRandIndex(cls,out.hd$class)
+```
+
+```{r}
+par(mfrow=c(2,5))
+for (k in 1:10) plotIm(out.hd$mu[k,])
+```
+
