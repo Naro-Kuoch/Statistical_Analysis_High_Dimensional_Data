@@ -220,6 +220,16 @@ X = swiss
 pc = princomp(X)
 pc
 ```
+The standard deviations are the squart root of  covariance matrix. 
+# verify computation 
+```{r}
+n = nrow(X)
+# center X by mean of each column 
+X_centered = scale(X,center = TRUE, scale = FALSE)
+xTx = (t(X_centered) %*% X_centered)/(n-1)
+lamdas = eigen(xTx)$values
+sqrt(lamdas)
+```
 
 ```{r}
 summary(pc)
