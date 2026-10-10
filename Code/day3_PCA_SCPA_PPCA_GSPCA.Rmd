@@ -1,8 +1,7 @@
 ---
 title: "SLHD-day3"
 author: "CB"
-date: "`r Sys.Date()`"
-output: html_document
+output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
@@ -226,6 +225,7 @@ The standard deviations are the squart root of  covariance matrix.
 n = nrow(X)
 # center X by mean of each column 
 X_centered = scale(X,center = TRUE, scale = FALSE)
+#X transpo X 
 xTx = (t(X_centered) %*% X_centered)/(n-1)
 lamdas = eigen(xTx)$values
 sqrt(lamdas)
@@ -250,7 +250,7 @@ For interpretation, we may rely on the correlation circle that can be obtain wit
 ```{r}
 biplot(pc)
 ```
-In black are the projection of the data on the two first principle component. In red the correlation circle. We should split them in two plot to be more readable. 
+In black are the projection of the data on the two first principle components. In red the correlation circle. We should split them in two plot to be more readable. 
 ```{r}
 par(mfrow=c(1,2))
 biplot(pc,col=c(0,2)); box()
@@ -292,6 +292,7 @@ The compoenent one is negative correlated with 1500m. the higer the value of com
 
 The component two is nagative correlated with Javelot. Clay and Sebrle are good in Javelot. Kizoglou and Karpov they are not good at Jvelot. 
 Barras has large value for component one so he is not good with 1500m 
+
 ## Sparce PCA
 
 SPCA allows to perform PCA and ease the interpretation of its results. The "official" implementation of SPCA is proposed in the `elasticnet` package for R:
@@ -310,7 +311,7 @@ As we have seen in the course, the goal of SPCA is to sparsify the loading matri
 pc = princomp(X)
 d = 2
 U = unclass(pc$loadings)
-round(U[,1:d],3)
+U[,1:d]
 ```
 
 Let's now apply SPCA on this Decathlon data:
@@ -318,7 +319,7 @@ Let's now apply SPCA on this Decathlon data:
 ```{r}
 lambda = 1
 out = spca(X,d,para = rep(lambda,d))
-round(out$loadings,3)
+out$loadings
 ```
 
 At this stage, it is interesting to compare the original PCA, its sparse version with SPCA and (the bad practice) the thresholded PCA.

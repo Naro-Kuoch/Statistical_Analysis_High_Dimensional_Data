@@ -1,0 +1,161 @@
+---
+title: "exam"
+author: "Naro_KUOCH"
+date: "2026-09-20"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#install.packages("funFEM")
+library(funFEM)
+data(velib)
+data = velib$data
+dim(data)
+```
+we have 181 variables and 1189 observations. Each observation is the loading profile of a station and each column is a time point. 
+```{r}
+names(data)
+```
+```{r}
+pairs(data[,1:5])
+```
+
+```{r}
+set.seed(123)
+
+idx <- sample(nrow(data), 100)
+
+matplot(
+  t(data[idx, ]),
+  type = "l",
+  lty = 1,
+  col = rgb(0, 0, 0, alpha = 0.3),
+  xlab = "Time",
+  ylab = "Value"
+)
+```
+
+```{r}
+pc = princomp(data)
+summary(pc)
+```
+
+If we apply the rule of the 90%, with d = 20 we already have about 90% of the full variance.
+```{r}
+screeplot(pc,npcs=30)
+```
+if we apply the elbow rule we can use just the first 5 components. 
+
+# Hierarchical Clustering  
+
+```{r}
+plot(hclust(dist(data),method = "single"))
+plot(hclust(dist(data),method = "complete"))
+plot(hclust(dist(data),method = "centroid"))
+plot(hclust(dist(data),method = "ward.D2"))
+```
+we can chose complete linkage or ward distance because the tree seems balance.  
+```{r}
+#complete 
+hc = hclust(dist(data),method = "complete")
+plot(hc)
+```
+
+we need to cut the tree at branch that is the largest jumpe which k =3
+
+```{r}
+plot(hc)
+rect.hclust(hc,k = 3)
+```
+```{r}
+w_hc = hclust(dist(data),method = "ward.D2")
+plot(w_hc)
+```
+we choose k = 4 for ward distance
+```{r}
+plot(w_hc)
+rect.hclust(w_hc,k = 4)
+```
+
+```{r}
+X = as.matrix(data,ncol = ncol(data))
+
+# perform PCA, then project the data on the new PCA system, take the first 2 principle components 
+X.2d = predict(princomp(X))[,1:2]
+
+hc = hclust(dist(data),method = "complete")
+clust = cutree(hc,k = 3)
+#plot the cluster with the compete method result on the 2 pca components 
+plot(X.2d,col=clust,pch=19)
+```
+
+```{r}
+w_hc = hclust(dist(data),method = "ward.D2")
+w_clust = cutree(w_hc,k =4 )
+#plot the cluster with the compete method result on the 2 pca components 
+plot(X.2d,col=w_clust,pch=19)
+```
+```{r}
+set.seed(123)
+
+idx <- sample(nrow(data), 20)
+
+matplot(
+  t(data[idx, ]),
+  type = "l",
+  lty = 1,
+  col = clust,
+  xlab = "Time",
+  ylab = "Value"
+)
+```
+
+# K-means
+find the best k for kmeans using criterions $$J(K) = \frac{B(K)}{S}$$
+```{r}
+K.max = 20
+J = rep(NA,K.max)
+for (k in 1:K.max){
+  out = kmeans(data, centers = k, nstart = 10)
+  J[k] = out$betweenss / out$totss
+}
+plot(1:K.max,J,type='b',col='blue')
+lines(1:K.max,J,type='s',lty=3,col='gray')
+
+```
+from this plot we can take K = 4 or 5. in order to compare with the previous reslut i take k=4
+```{r}
+km = kmeans(data, centers = 4, nstart = 10)
+plot(X.2d,col=km$cluster,pch=19)
+```
+```{r}
+set.seed(123)
+
+idx <- sample(nrow(data), 20)
+
+matplot(
+  t(data[idx, ]),
+  type = "l",
+  lty = 1,
+  col = km$cluster,
+  xlab = "Time",
+  ylab = "Value"
+)
+```
+
+From the result projected on the first 2 component of PCA, it seems that K-Mean can separate the data better. 
+```{r}
+
+matplot(
+  t(km$centers),
+  type = "l",
+  lty = 1,
+  xlab = "Time",
+  ylab = "Value"
+)
+```
+Among all the 1189 stations we can cluster them into 4 groups that have similar behavior over time
